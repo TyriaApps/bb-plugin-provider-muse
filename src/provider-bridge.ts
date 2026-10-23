@@ -606,7 +606,11 @@ type ConstructionRequest =
   | { kind: "start" }
   | { kind: "fresh" }
   | { kind: "resume"; providerThreadId: string }
-  | { kind: "fork"; sourceProviderThreadId: string };
+  | {
+      kind: "fork";
+      sourceProviderThreadId: string;
+      sourceProviderCheckpointId?: string;
+    };
 
 /**
  * Builds the live runtime for an attachment: one `muse serve` child per thread,
@@ -685,6 +689,9 @@ async function constructRuntime(args: {
     } else if (args.request.kind === "resume") {
       void reopenPendingInteractions(attachment, runtime);
     }
+    if (session.checkpointHandoff !== null) {
+      attachment.pendingHandoff = session.checkpointHandoff;
+    }
     return runtime;
   } catch (error) {
     runtime.closing = true;
@@ -753,6 +760,7 @@ async function startReplacementSession(
   path: string;
   viewCursor: string;
   replacedUnviewable: { sessionId: string; reason: string } | null;
+  checkpointHandoff: string | null;
 }> {
   const replacement = await connection.request({
     method: MSP_METHODS.sessionStart,
@@ -789,6 +797,7 @@ async function startReplacementSession(
       sessionId: replaced.sessionId,
       reason: replaced.reason,
     },
+    checkpointHandoff: null,
   };
 }
 
@@ -808,6 +817,7 @@ async function openSession(args: {
    * refused it, or accepted it but could serve no view of it.
    */
   replacedUnviewable: { sessionId: string; reason: string } | null;
+  checkpointHandoff: string | null;
 }> {
   const { connection, construction, request } = args;
 
@@ -832,6 +842,40 @@ async function openSession(args: {
       path: result.session.path,
       viewCursor: result.viewCursor,
       replacedUnviewable: null,
+      checkpointHandoff: null,
+    };
+  }
+
+  if (
+    request.kind === "fork" &&
+    request.sourceProviderCheckpointId !== undefined
+  ) {
+    const checkpointHandoff = await readSessionCheckpointHandoff(
+      connection,
+      request.sourceProviderThreadId,
+      request.sourceProviderCheckpointId,
+    );
+    const result = await connection.request({
+      method: MSP_METHODS.sessionStart,
+      params: {
+        commandId: uuidV7(),
+        workspaceRoot: construction.cwd,
+        approvalMode: construction.approvalMode,
+        ...(construction.model === undefined
+          ? {}
+          : { modelId: construction.model }),
+      },
+      resultSchema: mspSessionStartResultSchema,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+    });
+    return {
+      sessionId: result.session.sessionId,
+      modelId: result.session.modelId,
+      approvalMode: result.session.approvalMode?.mode ?? null,
+      path: result.session.path,
+      viewCursor: result.viewCursor,
+      replacedUnviewable: null,
+      checkpointHandoff,
     };
   }
 
@@ -898,6 +942,7 @@ async function openSession(args: {
     path: result.session.path,
     viewCursor: result.viewCursor,
     replacedUnviewable: null,
+    checkpointHandoff: null,
   };
 }
 
@@ -2232,6 +2277,32 @@ async function readSessionHandoff(
   }
 }
 
+async function readSessionCheckpointHandoff(
+  connection: MspConnection,
+  sessionId: string,
+  checkpointId: string,
+): Promise<string | null> {
+  const result = await connection.request({
+    method: MSP_METHODS.sessionRead,
+    params: { sessionId, excludeItems: false },
+    resultSchema: mspSessionReadResultSchema,
+    timeoutMs: SESSION_READ_TIMEOUT_MS,
+  });
+  const items = result.history.items ?? result.history.snapshot?.state.items ?? [];
+  let checkpointIndex = -1;
+  for (let index = 0; index < items.length; index += 1) {
+    if (items[index]?.turnId === checkpointId) {
+      checkpointIndex = index;
+    }
+  }
+  if (checkpointIndex < 0) {
+    throw new Error(
+      `Muse session ${sessionId} does not contain checkpoint ${checkpointId}`,
+    );
+  }
+  return handoffTranscript(items.slice(0, checkpointIndex + 1));
+}
+
 function stripBridgePreamble(text: string): string {
   return text
     .replace(/^\s*<system_instructions>[\s\S]*?<\/system_instructions>\s*/u, "")
@@ -2866,7 +2937,7 @@ const handlers: Record<string, RequestHandler> = {
         threadArchive: false,
         threadRename: false,
         threadGoalClear: false,
-        fork: "tip",
+        fork: "checkpoint",
         approvalEnforcedBy: "runtime",
         steerMode: "inject",
         skills: { configure: false },
@@ -3050,15 +3121,13 @@ const handlers: Record<string, RequestHandler> = {
       invalidParams(id, BRIDGE_REQUEST_METHODS.threadFork, parsed.error.issues);
       return;
     }
-    if (parsed.data.sourceProviderCheckpointId !== undefined) {
-      io.sendError(
-        id,
-        BRIDGE_JSON_RPC_ERRORS.FORK_CHECKPOINT_UNSUPPORTED,
-        "Muse forks at the tip of a session, not at a checkpoint",
-      );
-      return;
-    }
-    const { threadId, cwd, options, sourceProviderThreadId } = parsed.data;
+    const {
+      threadId,
+      cwd,
+      options,
+      sourceProviderThreadId,
+      sourceProviderCheckpointId,
+    } = parsed.data;
     const attachment = registerAttachment({
       threadId,
       cwd,
@@ -3070,7 +3139,13 @@ const handlers: Record<string, RequestHandler> = {
       const runtime = await constructRuntime({
         attachment,
         options,
-        request: { kind: "fork", sourceProviderThreadId },
+        request: {
+          kind: "fork",
+          sourceProviderThreadId,
+          ...(sourceProviderCheckpointId === undefined
+            ? {}
+            : { sourceProviderCheckpointId }),
+        },
       });
       io.sendResult(id, {
         providerThreadId: runtime.sessionId,

@@ -85,6 +85,7 @@ export const mspSessionResumeResultSchema = z
 const mspHistoryItemSchema = z
   .object({
     kind: z.string(),
+    turnId: z.string().nullable().optional(),
     text: z.string().optional(),
     /** `userMessage`: what bb showed the user, without the wrappers bb added. */
     displayText: z.string().optional(),

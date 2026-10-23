@@ -482,6 +482,7 @@ export class MuseTranslator {
     deltas.push({
       kind: "turn.boundary",
       status,
+      providerCheckpointId: turnId,
       ...(known ? { providerTurnId: turnId } : { claimIfIdle: true }),
       ...(boundaryMessage === undefined
         ? {}

@@ -119,7 +119,12 @@ describe("turn lifecycle", () => {
         sourceRange: {},
       }),
     ).toEqual([
-      { kind: "turn.boundary", status: "completed", providerTurnId: TURN_ID },
+      {
+        kind: "turn.boundary",
+        status: "completed",
+        providerCheckpointId: TURN_ID,
+        providerTurnId: TURN_ID,
+      },
     ]);
   });
 
@@ -134,7 +139,12 @@ describe("turn lifecycle", () => {
         sourceRange: {},
       }),
     ).toEqual([
-      { kind: "turn.boundary", status: "interrupted", claimIfIdle: true },
+      {
+        kind: "turn.boundary",
+        status: "interrupted",
+        providerCheckpointId: "unseen",
+        claimIfIdle: true,
+      },
     ]);
   });
 
@@ -542,6 +552,7 @@ describe("typed provider errors", () => {
       {
         kind: "turn.boundary",
         status: "failed",
+        providerCheckpointId: TURN_ID,
         providerTurnId: TURN_ID,
         error: {
           message: "request failed: 429 rate limit reached for this account",
@@ -560,7 +571,12 @@ describe("typed provider errors", () => {
       sourceRange: {},
     });
     expect(deltas).toEqual([
-      { kind: "turn.boundary", status: "completed", providerTurnId: TURN_ID },
+      {
+        kind: "turn.boundary",
+        status: "completed",
+        providerCheckpointId: TURN_ID,
+        providerTurnId: TURN_ID,
+      },
     ]);
   });
 });
