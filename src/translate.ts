@@ -27,6 +27,7 @@ import {
   mspTodoListChangedParamsSchema,
   mspTokenUsageParamsSchema,
   mspTurnCompletedParamsSchema,
+  mspTurnForegroundCompletedParamsSchema,
   mspTurnRetryScheduledParamsSchema,
   mspTurnStartedParamsSchema,
   mspTurnUnqueuedParamsSchema,
@@ -352,6 +353,7 @@ function workflowShape(item: MspItem): DeltaItemShape {
  */
 export class MuseTranslator {
   private readonly cwd: string;
+  private readonly foregroundChecks = new Map<string, readonly string[]>();
   private readonly items = new Map<string, TrackedItem>();
   private readonly openTurnIds = new Set<string>();
   private usageTotal: ThreadEventTokenUsageBreakdown = ZERO_TOKEN_USAGE;
@@ -386,6 +388,7 @@ export class MuseTranslator {
   settleOpenTurns(status: ThreadEventTurnStatus, message: string): ThreadDelta[] {
     const deltas: ThreadDelta[] = [];
     for (const turnId of this.openTurnIds) {
+      deltas.push(...this.closeForegroundChecks(turnId, status));
       deltas.push({
         kind: "turn.boundary",
         status,
@@ -403,6 +406,8 @@ export class MuseTranslator {
         return this.onTurnStarted(params);
       case "turn/completed":
         return this.onTurnCompleted(params);
+      case "turn/foregroundCompleted":
+        return this.onTurnForegroundCompleted(params);
       case "turn/retryScheduled":
         return this.onTurnRetryScheduled(params);
       case "turn/unqueued":
@@ -456,7 +461,7 @@ export class MuseTranslator {
       error?.message ??
       (status === "failed" ? parsed.data.reason : undefined);
     const message = error?.message ?? parsed.data.reason;
-    const deltas: ThreadDelta[] = [];
+    const deltas: ThreadDelta[] = this.closeForegroundChecks(turnId, status);
 
     /**
      * The typed failure, ahead of the boundary that settles the turn. bb's own
@@ -491,6 +496,69 @@ export class MuseTranslator {
     return deltas;
   }
 
+  private onTurnForegroundCompleted(params: unknown): ThreadDelta[] {
+    const parsed = mspTurnForegroundCompletedParamsSchema.safeParse(params);
+    if (!parsed.success || !this.openTurnIds.has(parsed.data.turnId)) {
+      return [];
+    }
+    const { blockingAgents, turnId } = parsed.data;
+    if (this.foregroundChecks.has(turnId)) {
+      return [];
+    }
+    this.foregroundChecks.set(turnId, blockingAgents);
+    const item = {
+      type: "tool" as const,
+      tool: "muse.reminder_checks",
+      args: { blockingAgents },
+    };
+    return [
+      {
+        kind: "item.open",
+        key: { providerItemId: `muse-reminder-checks-${turnId}` },
+        item,
+        presentation: withTitle(
+          {
+            label: { pending: "Double checking", completed: "Checked" },
+            icon: { glyph: "BadgeCheck" },
+          },
+          presentationTitle(blockingAgents.join(", ")),
+        ),
+        providerTurnId: turnId,
+      },
+    ];
+  }
+
+  private closeForegroundChecks(
+    turnId: string,
+    status: ThreadEventTurnStatus,
+  ): ThreadDelta[] {
+    const blockingAgents = this.foregroundChecks.get(turnId);
+    if (blockingAgents === undefined) {
+      return [];
+    }
+    this.foregroundChecks.delete(turnId);
+    return [
+      {
+        kind: "item.close",
+        key: { providerItemId: `muse-reminder-checks-${turnId}` },
+        status: status === "completed" ? "completed" : "failed",
+        item: {
+          type: "tool",
+          tool: "muse.reminder_checks",
+          args: { blockingAgents },
+        },
+        presentation: withTitle(
+          {
+            label: { pending: "Double checking", completed: "Checked" },
+            icon: { glyph: "BadgeCheck" },
+          },
+          presentationTitle(blockingAgents.join(", ")),
+        ),
+        providerTurnId: turnId,
+      },
+    ];
+  }
+
   private onTurnRetryScheduled(params: unknown): ThreadDelta[] {
     const parsed = mspTurnRetryScheduledParamsSchema.safeParse(params);
     if (!parsed.success) {
@@ -520,6 +588,7 @@ export class MuseTranslator {
     }
     const known = this.openTurnIds.delete(parsed.data.turnId);
     return [
+      ...this.closeForegroundChecks(parsed.data.turnId, "interrupted"),
       {
         kind: "turn.boundary",
         status: "interrupted",

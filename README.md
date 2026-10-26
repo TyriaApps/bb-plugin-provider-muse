@@ -93,7 +93,17 @@ clear it.
 This is where the bridge departs from codex, and it has to. Codex kills its
 child on `thread/stop { release }` because resuming a rollout is clean; Muse's
 resume is not, so a thread's child outlives ordinary release and is reclaimed
-only on `thread/discard`, on bridge shutdown, or after a long idle.
+only on `thread/discard`, on bridge shutdown, or after two idle minutes.
+
+Muse 1.4.3 and newer can report `turn/foregroundCompleted` after the visible
+answer is ready while its blocking reminder agents are still checking the
+result. The bridge renders that phase as **Double checking** and waits for the
+real terminal before declaring the turn complete. This preserves Muse's
+verification work without making the quiet interval look like model latency.
+
+A released thread stays warm for two minutes for quick follow-ups, then its
+child is reclaimed. Set `BB_MUSE_IDLE_SHUTDOWN_MS` to a positive millisecond
+value to tune that interval for a specific installation.
 
 When a rebuild is unavoidable anyway — the child died, bb restarted the bridge —
 the session is resumed first, because a session that never produced opaque

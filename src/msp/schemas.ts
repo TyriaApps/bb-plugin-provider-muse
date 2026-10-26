@@ -270,6 +270,14 @@ export const mspTurnCompletedParamsSchema = z
   })
   .loose();
 
+export const mspTurnForegroundCompletedParamsSchema = z
+  .object({
+    sessionId: z.string().min(1),
+    turnId: z.string().min(1),
+    blockingAgents: z.array(z.string().min(1)).min(1),
+  })
+  .loose();
+
 export const mspTurnRetryScheduledParamsSchema = z
   .object({
     sessionId: z.string().min(1),

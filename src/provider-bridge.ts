@@ -190,6 +190,7 @@ function isUnfinishedFold(params: unknown): boolean {
 const REPLAYABLE_VIEW_METHODS = new Set([
   "turn/started",
   "turn/completed",
+  "turn/foregroundCompleted",
   "turn/retryScheduled",
   "turn/unqueued",
   "turn/retracted",
@@ -215,7 +216,10 @@ const HANDOFF_CHAR_BUDGET = 12_000;
  * thread's child outlives ordinary release and is reclaimed only when bb is
  * plainly done with the thread.
  */
-const ATTACHMENT_IDLE_SHUTDOWN_MS = 30 * 60_000;
+const ATTACHMENT_IDLE_SHUTDOWN_MS = tunedMs(
+  "BB_MUSE_IDLE_SHUTDOWN_MS",
+  2 * 60_000,
+);
 
 type JsonRpcId = string | number;
 type OutboundMessage = { jsonrpc: "2.0" } & Record<string, unknown>;
