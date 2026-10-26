@@ -88,6 +88,7 @@ import {
   MUSE_USAGE_CHANGED_METHOD,
 } from "./subscription-usage.js";
 import { museProviderErrorInfo } from "./error-info.js";
+import { IdleRuntimePool } from "./idle-runtime-pool.js";
 import { classifyTurnFailure } from "./recovery.js";
 import {
   constructionSignature,
@@ -218,7 +219,15 @@ const HANDOFF_CHAR_BUDGET = 12_000;
  */
 const ATTACHMENT_IDLE_SHUTDOWN_MS = tunedMs(
   "BB_MUSE_IDLE_SHUTDOWN_MS",
-  2 * 60_000,
+  30 * 60_000,
+);
+const idleRuntimes = new IdleRuntimePool<MuseAttachment>(
+  ATTACHMENT_IDLE_SHUTDOWN_MS,
+  Math.max(1, Math.floor(tunedMs("BB_MUSE_MAX_IDLE_RUNTIMES", 2))),
+  (attachment) => {
+    if (attachment.runtime?.openTurnIds.size || attachment.inFlightTurn) return;
+    releaseRuntime(attachment, { kill: true });
+  },
 );
 
 type JsonRpcId = string | number;
@@ -979,19 +988,13 @@ function forgetAttachment(attachment: MuseAttachment): void {
 }
 
 function cancelIdleShutdown(attachment: MuseAttachment): void {
-  if (attachment.idleTimer !== null) {
-    clearTimeout(attachment.idleTimer);
-    attachment.idleTimer = null;
-  }
+  idleRuntimes.activate(attachment);
 }
 
 function scheduleIdleShutdown(attachment: MuseAttachment): void {
-  cancelIdleShutdown(attachment);
-  attachment.idleTimer = setTimeout(() => {
-    attachment.idleTimer = null;
-    releaseRuntime(attachment, { kill: true });
-  }, ATTACHMENT_IDLE_SHUTDOWN_MS);
-  attachment.idleTimer.unref?.();
+  if (attachment.runtime === null) return;
+  if (attachment.runtime.openTurnIds.size || attachment.inFlightTurn) return;
+  idleRuntimes.release(attachment);
 }
 
 function attachmentForParams(params: unknown): MuseAttachment | null {
@@ -2909,7 +2912,6 @@ function registerAttachment(args: {
     identityAnnounced: false,
     pendingPreIdentityDeltas: [],
     restartBeforeNextTurn: null,
-    idleTimer: null,
     closing: false,
   };
   attachments.set(args.threadId, attachment);
