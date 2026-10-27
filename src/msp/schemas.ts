@@ -85,6 +85,7 @@ export const mspSessionResumeResultSchema = z
 const mspHistoryItemSchema = z
   .object({
     kind: z.string(),
+    turnId: z.string().nullable().optional(),
     text: z.string().optional(),
     /** `userMessage`: what bb showed the user, without the wrappers bb added. */
     displayText: z.string().optional(),
@@ -266,6 +267,14 @@ export const mspTurnCompletedParamsSchema = z
       })
       .loose()
       .optional(),
+  })
+  .loose();
+
+export const mspTurnForegroundCompletedParamsSchema = z
+  .object({
+    sessionId: z.string().min(1),
+    turnId: z.string().min(1),
+    blockingAgents: z.array(z.string().min(1)).min(1),
   })
   .loose();
 

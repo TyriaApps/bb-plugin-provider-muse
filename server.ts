@@ -89,7 +89,7 @@ export default function plugin(bb: BbPluginApi) {
     capabilities: {
       supportsServiceTier: false,
       supportsNativeUserQuestion: true,
-      fork: "tip",
+      fork: "checkpoint",
       supportsManualCompaction: true,
       supportsThreadArchive: false,
       supportsThreadRename: false,

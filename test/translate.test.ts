@@ -119,7 +119,12 @@ describe("turn lifecycle", () => {
         sourceRange: {},
       }),
     ).toEqual([
-      { kind: "turn.boundary", status: "completed", providerTurnId: TURN_ID },
+      {
+        kind: "turn.boundary",
+        status: "completed",
+        providerCheckpointId: TURN_ID,
+        providerTurnId: TURN_ID,
+      },
     ]);
   });
 
@@ -134,8 +139,80 @@ describe("turn lifecycle", () => {
         sourceRange: {},
       }),
     ).toEqual([
-      { kind: "turn.boundary", status: "interrupted", claimIfIdle: true },
+      {
+        kind: "turn.boundary",
+        status: "interrupted",
+        providerCheckpointId: "unseen",
+        claimIfIdle: true,
+      },
     ]);
+  });
+
+  it("shows reminder checks after foreground completion and closes them at the terminal", () => {
+    const instance = translator();
+    expect(
+      instance.onNotification("turn/foregroundCompleted", {
+        sessionId: SESSION_ID,
+        turnId: TURN_ID,
+        blockingAgents: ["skill-reminder", "verify-reminder"],
+        viewCursor: "cur-8",
+        sourceRange: {},
+      }),
+    ).toMatchObject([
+      {
+        kind: "item.open",
+        key: { providerItemId: `muse-reminder-checks-${TURN_ID}` },
+        item: {
+          type: "tool",
+          tool: "muse.reminder_checks",
+          args: { blockingAgents: ["skill-reminder", "verify-reminder"] },
+        },
+        providerTurnId: TURN_ID,
+      },
+    ]);
+
+    expect(
+      instance.onNotification("turn/foregroundCompleted", {
+        sessionId: SESSION_ID,
+        turnId: TURN_ID,
+        blockingAgents: ["skill-reminder", "verify-reminder"],
+        viewCursor: "cur-8",
+        sourceRange: {},
+      }),
+    ).toEqual([]);
+
+    expect(
+      instance.onNotification("turn/completed", {
+        sessionId: SESSION_ID,
+        turnId: TURN_ID,
+        terminal: "completed",
+        viewCursor: "cur-9",
+        sourceRange: {},
+      }),
+    ).toMatchObject([
+      {
+        kind: "item.close",
+        key: { providerItemId: `muse-reminder-checks-${TURN_ID}` },
+        status: "completed",
+        providerTurnId: TURN_ID,
+      },
+      {
+        kind: "turn.boundary",
+        status: "completed",
+        providerTurnId: TURN_ID,
+      },
+    ]);
+  });
+
+  it("ignores a foreground completion for a turn that is not open", () => {
+    const instance = new MuseTranslator({ cwd: "/workspace" });
+    expect(
+      instance.onNotification("turn/foregroundCompleted", {
+        sessionId: SESSION_ID,
+        turnId: TURN_ID,
+        blockingAgents: ["verify-reminder"],
+      }),
+    ).toEqual([]);
   });
 
   it("settles a reclaimed submission so its accepted input cannot hang", () => {
@@ -542,6 +619,7 @@ describe("typed provider errors", () => {
       {
         kind: "turn.boundary",
         status: "failed",
+        providerCheckpointId: TURN_ID,
         providerTurnId: TURN_ID,
         error: {
           message: "request failed: 429 rate limit reached for this account",
@@ -560,7 +638,12 @@ describe("typed provider errors", () => {
       sourceRange: {},
     });
     expect(deltas).toEqual([
-      { kind: "turn.boundary", status: "completed", providerTurnId: TURN_ID },
+      {
+        kind: "turn.boundary",
+        status: "completed",
+        providerCheckpointId: TURN_ID,
+        providerTurnId: TURN_ID,
+      },
     ]);
   });
 });

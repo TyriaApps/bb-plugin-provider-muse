@@ -7,9 +7,43 @@
  */
 import { createInterface } from "node:readline";
 import { randomUUID } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
 
-const sessions = new Map();
+const sessionStorePath = process.env.FAKE_MUSE_SESSION_STORE ?? null;
+const sessions = new Map(
+  sessionStorePath === null
+    ? []
+    : Object.entries(
+        (() => {
+          try {
+            return JSON.parse(readFileSync(sessionStorePath, "utf8"));
+          } catch {
+            return {};
+          }
+        })(),
+      ),
+);
 let cursor = 0;
+
+function persistSessions() {
+  if (sessionStorePath !== null) {
+    writeFileSync(sessionStorePath, JSON.stringify(Object.fromEntries(sessions)));
+  }
+}
+
+function rememberSession(sessionId, value) {
+  sessions.set(sessionId, value);
+  persistSessions();
+}
+
+function rememberItem(sessionId, item) {
+  const record = sessions.get(sessionId);
+  if (record === undefined) {
+    return;
+  }
+  record.items = [...(record.items ?? []), item];
+  persistSessions();
+}
 
 /**
  * Scripts the one failure a client cannot paper over by waiting: a session whose
@@ -24,10 +58,10 @@ const poisonEverySession = process.env.FAKE_MUSE_POISON_ALL === "1";
 const pendingApprovalSessionId =
   process.env.FAKE_MUSE_PENDING_APPROVAL ?? null;
 if (pendingApprovalSessionId !== null) {
-  sessions.set(pendingApprovalSessionId, { turns: 0, poisoned: false });
+  rememberSession(pendingApprovalSessionId, { turns: 0, poisoned: false });
 }
 if (poisonedSessionId !== null) {
-  sessions.set(poisonedSessionId, {
+  rememberSession(poisonedSessionId, {
     turns: 0,
     poisoned: true,
     items: [
@@ -311,6 +345,14 @@ function finishTurn(sessionId, turnId, toolItemId, promptText, refused, decision
 
   const messageItemId = `${turnId}-message`;
   const reply = `muse echo: ${promptText} (${decisions.join(",")})`;
+  rememberItem(sessionId, {
+    itemId: messageItemId,
+    kind: "agentMessage",
+    status: "completed",
+    revision: 1,
+    turnId,
+    text: reply,
+  });
   viewNotify(sessionId, "item/completed", {
     item: {
       itemId: messageItemId,
@@ -462,6 +504,14 @@ function runTurn(sessionId, turnId, promptText) {
     viewCursor: nextCursor(),
     itemId: messageItemId,
     delta: reply,
+  });
+  rememberItem(sessionId, {
+    itemId: messageItemId,
+    kind: "agentMessage",
+    status: "completed",
+    revision: 2,
+    turnId,
+    text: reply,
   });
   viewNotify(sessionId, "item/completed", {
     item: {
@@ -619,7 +669,7 @@ function handle(message) {
 
     case "session/start": {
       const sessionId = params?.sessionId ?? randomUUID();
-      sessions.set(sessionId, { turns: 0, poisoned: poisonEverySession });
+      rememberSession(sessionId, { turns: 0, poisoned: poisonEverySession });
       reply({ session: session(sessionId), viewCursor: nextCursor() });
       return;
     }
@@ -673,10 +723,10 @@ function handle(message) {
         );
       }
       const inherited = sessions.get(source);
-      sessions.set(sessionId, {
+      rememberSession(sessionId, {
         turns: 0,
         poisoned: poisonEverySession || inherited?.poisoned === true,
-        items: inherited?.items ?? [],
+        items: [...(inherited?.items ?? [])],
       });
       /**
        * A session Muse accepts back but hands no view cursor for: it still
@@ -726,6 +776,15 @@ function handle(message) {
         .filter((part) => part.type === "text")
         .map((part) => part.text)
         .join("");
+      rememberItem(sessionId, {
+        itemId: `${turnId}-user`,
+        kind: "userMessage",
+        status: "completed",
+        revision: 1,
+        turnId,
+        text: promptText,
+        displayText: params.displayText ?? promptText,
+      });
       if (sessions.get(sessionId).poisoned !== true) {
         reply({
           commandId: params.commandId,

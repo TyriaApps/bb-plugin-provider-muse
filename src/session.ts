@@ -146,7 +146,6 @@ export interface MuseAttachment {
   pendingPreIdentityDeltas: ThreadDelta[];
   /** Set when the next turn must rebuild; `fresh` drops the session's history. */
   restartBeforeNextTurn: { reason: string; fresh: boolean } | null;
-  idleTimer: NodeJS.Timeout | null;
   closing: boolean;
 }
 
