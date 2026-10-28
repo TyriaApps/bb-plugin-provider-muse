@@ -187,6 +187,7 @@ it("reruns the prompt when Muse refuses the session's reasoning history", async 
   /** Accepted exactly once: the rerun is bb's, not a second client request. */
   const accepted = collected.filter((delta) => delta.kind === "input.accepted");
   expect(accepted).toHaveLength(1);
+  expect(accepted[0].providerTurnId).toEqual(expect.any(String));
 }, 45_000);
 
 it("re-identifies the thread when a rebuild replaces the session", async () => {

@@ -480,6 +480,25 @@ estimate.
 
 ## Development
 
+Muse can report `turn/foregroundCompleted` with blocking agents such as
+`goal-reminder` and `verify-reminder` before reporting the terminal turn event.
+BB displays that interval as **Waiting for Muse checks**. It is part of the
+turn's total duration, not an additional BB timer. The bridge does not run these
+agents and cannot safely declare completion before Muse does.
+
+An opt-in timing test separates foreground latency from this interval:
+
+```sh
+BB_MUSE_TIMING=1 npx vitest run test/live-reminder-timing.test.ts
+```
+
+On Muse 1.4.14-R7309.1, four alternating no-tool turns on 2026-10-28 measured
+2.9/8.7 seconds of reminder time at Medium and 11.0/27.0 seconds at X-High.
+These are small-sample observations, not a benchmark or a guaranteed speedup.
+They reproduce long reminder waits without Tyria tools or repository work.
+Use Medium for routine tasks when latency matters; keep higher reasoning for
+tasks that benefit from it. This integration does not disable Muse checks.
+
 ```sh
 npm install
 npm run typecheck

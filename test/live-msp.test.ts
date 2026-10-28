@@ -102,7 +102,9 @@ it.skipIf(!live)(
     );
     const startResult = started.find(
       (message) => (message as { id?: unknown }).id === 2,
-    ) as { result?: { providerThreadId?: string }; error?: unknown } | undefined;
+    ) as
+      | { result?: { providerThreadId?: string }; error?: unknown }
+      | undefined;
     expect(startResult?.error).toBeUndefined();
     const providerThreadId = startResult?.result?.providerThreadId;
     expect(typeof providerThreadId).toBe("string");
@@ -147,6 +149,11 @@ it.skipIf(!live)(
 
     expect(types).toContain("turn/started");
     expect(types).toContain("turn/completed");
+    expect(
+      events.filter((event) => event.type === "turn/input/accepted"),
+    ).toMatchObject([
+      { clientRequestId: "creq_abcdefghij", scope: { kind: "turn" } },
+    ]);
     expect(types.some((type) => type.startsWith("item/"))).toBe(true);
     expect(
       events.some((event) => event.type === "thread/tokenUsage/updated"),
@@ -178,20 +185,32 @@ it.skipIf(!live)(
       },
     });
 
+    await drain(
+      (collected) =>
+        collected.some((message) => (message as { id?: unknown }).id === 5),
+      60_000,
+    );
     const toolMessages = await drain((collected) => {
       const assembled = assembleCapturedThreadEvents(collected, "live-thread");
       return (
         assembled.filter((event) => event.type === "turn/completed").length >= 2
       );
     }, 180_000);
-    const toolEvents = assembleCapturedThreadEvents(toolMessages, "live-thread");
+    const toolEvents = assembleCapturedThreadEvents(
+      toolMessages,
+      "live-thread",
+    );
+    expect(
+      toolEvents.filter((event) => event.type === "turn/input/accepted"),
+    ).toHaveLength(2);
     console.info(
       `tool turn events: ${toolEvents.map((event) => event.type).join(", ")}`,
     );
     const commandItems = toolEvents.filter(
       (event) =>
         event.type === "item/completed" &&
-        (event as { item?: { type?: string } }).item?.type === "commandExecution",
+        (event as { item?: { type?: string } }).item?.type ===
+          "commandExecution",
     );
     expect(commandItems.length).toBeGreaterThan(0);
 

@@ -2591,7 +2591,10 @@ async function submitTurn(args: {
   try {
     const runtime = await liveRuntimeForTurn({ attachment, options });
 
-    if (args.clientRequestId !== undefined) {
+    if (
+      args.clientRequestId !== undefined &&
+      isStandaloneBuiltinCompactCommand(args.input)
+    ) {
       emitDeltas(attachment, [
         { kind: "input.accepted", clientRequestId: args.clientRequestId },
       ]);
@@ -2677,6 +2680,16 @@ async function submitTurn(args: {
      */
     if (started.startedNewTurn) {
       emitDeltas(attachment, runtime.translator.adoptOpenTurn(started.turnId));
+    }
+    if (args.clientRequestId !== undefined && started.startedNewTurn) {
+      emitDeltas(attachment, [
+        {
+          kind: "input.accepted",
+          clientRequestId: args.clientRequestId,
+          providerTurnId: started.turnId,
+        },
+      ]);
+      acceptedEmitted = true;
     }
     /**
      * Only a prompt Muse says it started no turn for can be settled as one that

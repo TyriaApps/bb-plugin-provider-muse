@@ -518,7 +518,10 @@ export class MuseTranslator {
         item,
         presentation: withTitle(
           {
-            label: { pending: "Double checking", completed: "Checked" },
+            label: {
+              pending: "Waiting for Muse checks",
+              completed: "Muse checks finished",
+            },
             icon: { glyph: "BadgeCheck" },
           },
           presentationTitle(blockingAgents.join(", ")),
@@ -549,7 +552,10 @@ export class MuseTranslator {
         },
         presentation: withTitle(
           {
-            label: { pending: "Double checking", completed: "Checked" },
+            label: {
+              pending: "Waiting for Muse checks",
+              completed: "Muse checks finished",
+            },
             icon: { glyph: "BadgeCheck" },
           },
           presentationTitle(blockingAgents.join(", ")),
