@@ -560,7 +560,16 @@ async function buildConfigHome(
   });
 }
 
-function childEnv(
+const DISABLED_MUSE_REMINDER_FEATURES = {
+  MUSE_EXPERIMENTAL_SCOPE_REMINDER: "false",
+  MUSE_EXPERIMENTAL_SKILL_REMINDER: "false",
+  MUSE_EXPERIMENTAL_TODO_REMINDER: "false",
+  MUSE_EXPERIMENTAL_MEMORY_REMINDER: "false",
+  MUSE_EXPERIMENTAL_GOAL_REMINDER: "false",
+  MUSE_EXPERIMENTAL_VERIFY_REMINDER: "false",
+} as const;
+
+export function childEnv(
   envVars: Record<string, string> | undefined,
   configHome: string | null,
 ): NodeJS.ProcessEnv {
@@ -570,6 +579,7 @@ function childEnv(
   return {
     ...base,
     ...(envVars ?? {}),
+    ...DISABLED_MUSE_REMINDER_FEATURES,
     ...(configHome === null ? {} : { XDG_CONFIG_HOME: configHome }),
   };
 }

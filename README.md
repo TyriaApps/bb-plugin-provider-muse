@@ -96,11 +96,12 @@ resume is not, so a thread's child outlives ordinary release and is reclaimed
 on `thread/discard`, on bridge shutdown, after thirty idle minutes, or when
 the idle-session pool is full.
 
-Muse 1.4.3 and newer can report `turn/foregroundCompleted` after the visible
-answer is ready while its blocking reminder agents are still checking the
-result. The bridge renders that phase as **Double checking** and waits for the
-real terminal before declaring the turn complete. This preserves Muse's
-verification work without making the quiet interval look like model latency.
+Muse 1.4.3 and newer can run blocking reminder agents after the visible answer
+is ready. BB-hosted Muse processes disable those reminder feature gates, so the
+turn completes with the answer instead of remaining in a post-response
+`goal-reminder`, `verify-reminder`, or related checking phase. This applies only
+to Muse processes started by this provider and does not change the user's Muse
+CLI configuration.
 
 A released thread stays warm for thirty minutes for follow-ups. The two most
 recently released sessions are retained; releasing another reclaims the oldest
@@ -480,24 +481,18 @@ estimate.
 
 ## Development
 
-Muse can report `turn/foregroundCompleted` with blocking agents such as
-`goal-reminder` and `verify-reminder` before reporting the terminal turn event.
-BB displays that interval as **Waiting for Muse checks**. It is part of the
-turn's total duration, not an additional BB timer. The bridge does not run these
-agents and cannot safely declare completion before Muse does.
+Muse reminder agents are disabled in the child-process environment before
+`muse serve` starts. The translator still understands reminder events for
+compatibility with older or externally managed Muse hosts, but normal BB turns
+must not produce the **Waiting for Muse checks** phase.
 
-An opt-in timing test separates foreground latency from this interval:
+An opt-in live test verifies the absence of that phase:
 
 ```sh
 BB_MUSE_TIMING=1 npx vitest run test/live-reminder-timing.test.ts
 ```
 
-On Muse 1.4.14-R7309.1, four alternating no-tool turns on 2026-10-28 measured
-2.9/8.7 seconds of reminder time at Medium and 11.0/27.0 seconds at X-High.
-These are small-sample observations, not a benchmark or a guaranteed speedup.
-They reproduce long reminder waits without Tyria tools or repository work.
-Use Medium for routine tasks when latency matters; keep higher reasoning for
-tasks that benefit from it. This integration does not disable Muse checks.
+The test fails if Muse emits a reminder-check row for the turn.
 
 ```sh
 npm install
