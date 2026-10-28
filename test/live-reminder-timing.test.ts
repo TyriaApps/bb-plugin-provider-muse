@@ -10,7 +10,7 @@ import {
 import { handleLine } from "../src/provider-bridge.js";
 
 it.skipIf(process.env.BB_MUSE_TIMING !== "1")(
-  "measures Muse foreground and reminder phases separately",
+  "does not run reminder agents after a Muse answer",
   async () => {
     const cwd = mkdtempSync(join(tmpdir(), "bb-muse-timing-"));
     const output = capture();
@@ -114,6 +114,7 @@ it.skipIf(process.env.BB_MUSE_TIMING !== "1")(
             )
             .map((delta) => ({ at, agents: delta.item?.args }));
         });
+        expect(checks).toHaveLength(0);
         measurements.push({
           reasoningLevel,
           totalMs: Date.now() - start,
